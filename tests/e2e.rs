@@ -73,8 +73,10 @@ async fn e2e_me() {
     let token = login().await;
     let client = client_with_token(&token);
     let me: Value = client.get("/api/me").await.unwrap();
-    assert_eq!(me["username"], USERNAME);
-    assert!(me["isAdmin"].as_bool().unwrap_or(false));
+    // /api/me returns { user: { username, ... }, token, ... }
+    let user = &me["user"];
+    assert_eq!(user["username"], USERNAME);
+    assert!(user["isAdmin"].as_bool().unwrap_or(false));
 }
 
 #[tokio::test]
@@ -169,11 +171,11 @@ async fn e2e_website_full_lifecycle() {
         .unwrap();
     assert!(pageviews.is_object());
 
-    // Metrics
+    // Metrics (use "browser" type — "url" may not be supported in all versions)
     let metrics_query = vec![
         ("startAt".to_string(), week_ago.to_string()),
         ("endAt".to_string(), now.to_string()),
-        ("type".to_string(), "url".to_string()),
+        ("type".to_string(), "browser".to_string()),
     ];
     let metrics: Value = client
         .get_with_query(
@@ -236,11 +238,12 @@ async fn e2e_team_full_lifecycle() {
     let token = login().await;
     let client = client_with_token(&token);
 
-    // Create team
+    // Create team — API returns an array: [team_object, membership_object]
     let body = serde_json::json!({ "name": "E2E Test Team" });
     let created: Value = client.post("/api/teams", &body).await.unwrap();
-    let team_id = created["id"].as_str().unwrap().to_string();
-    assert_eq!(created["name"], "E2E Test Team");
+    let team = if created.is_array() { &created[0] } else { &created };
+    let team_id = team["id"].as_str().unwrap().to_string();
+    assert_eq!(team["name"], "E2E Test Team");
 
     // Get team
     let fetched: Value = client
@@ -453,12 +456,30 @@ async fn e2e_realtime() {
 async fn e2e_reports_list() {
     let token = login().await;
     let client = client_with_token(&token);
-    let query = vec![("page".to_string(), "1".to_string())];
+
+    // Create a website first since reports list requires websiteId
+    let site_body = serde_json::json!({
+        "name": "Reports List Site",
+        "domain": "reports-list.example.com"
+    });
+    let site: Value = client.post("/api/websites", &site_body).await.unwrap();
+    let website_id = site["id"].as_str().unwrap();
+
+    let query = vec![
+        ("page".to_string(), "1".to_string()),
+        ("websiteId".to_string(), website_id.to_string()),
+    ];
     let result: Value = client
         .get_with_query("/api/reports", &query)
         .await
         .unwrap();
     assert!(result.is_object() || result.is_array());
+
+    // Cleanup
+    let _: Value = client
+        .delete(&format!("/api/websites/{website_id}"))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -480,11 +501,15 @@ async fn e2e_report_funnel() {
     let report_body = serde_json::json!({
         "websiteId": website_id,
         "type": "funnel",
+        "filters": {},
         "parameters": {
             "startDate": "2025-01-01T00:00:00.000Z",
             "endDate": "2025-12-31T23:59:59.999Z",
             "timezone": "UTC",
-            "urls": ["/step1", "/step2", "/step3"],
+            "steps": [
+                { "type": "path", "value": "/step1" },
+                { "type": "path", "value": "/step2" }
+            ],
             "window": 7
         }
     });
