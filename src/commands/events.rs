@@ -156,7 +156,10 @@ pub async fn run(cmd: EventsCmd) {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(events) = items {
                         let rows: Vec<Vec<String>> = events
                             .iter()
@@ -181,7 +184,7 @@ pub async fn run(cmd: EventsCmd) {
             start_at,
             end_at,
             compare,
-            json,
+            json: _,
         } => {
             let mut query = vec![
                 ("startAt".into(), start_at.to_string()),
@@ -191,15 +194,14 @@ pub async fn run(cmd: EventsCmd) {
                 query.push(("compare".into(), c));
             }
             match client
-                .get_with_query::<Value>(&format!("/api/websites/{website_id}/events/stats"), &query)
+                .get_with_query::<Value>(
+                    &format!("/api/websites/{website_id}/events/stats"),
+                    &query,
+                )
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
@@ -210,7 +212,7 @@ pub async fn run(cmd: EventsCmd) {
             end_at,
             unit,
             timezone,
-            json,
+            json: _,
         } => {
             let query = vec![
                 ("startAt".into(), start_at.to_string()),
@@ -226,11 +228,7 @@ pub async fn run(cmd: EventsCmd) {
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
@@ -239,25 +237,18 @@ pub async fn run(cmd: EventsCmd) {
             website_id,
             start_at,
             end_at,
-            json,
+            json: _,
         } => {
             let query = vec![
                 ("startAt".into(), start_at.to_string()),
                 ("endAt".into(), end_at.to_string()),
             ];
             match client
-                .get_with_query::<Value>(
-                    &format!("/api/websites/{website_id}/event-data"),
-                    &query,
-                )
+                .get_with_query::<Value>(&format!("/api/websites/{website_id}/event-data"), &query)
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
@@ -266,7 +257,7 @@ pub async fn run(cmd: EventsCmd) {
             website_id,
             start_at,
             end_at,
-            json,
+            json: _,
         } => {
             let query = vec![
                 ("startAt".into(), start_at.to_string()),
@@ -280,11 +271,7 @@ pub async fn run(cmd: EventsCmd) {
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }

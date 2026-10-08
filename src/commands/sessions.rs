@@ -195,9 +195,7 @@ pub async fn run(cmd: SessionsCmd) {
             json,
         } => {
             match client
-                .get::<Value>(&format!(
-                    "/api/websites/{website_id}/sessions/{session_id}"
-                ))
+                .get::<Value>(&format!("/api/websites/{website_id}/sessions/{session_id}"))
                 .await
             {
                 Ok(data) => {
@@ -256,7 +254,7 @@ pub async fn run(cmd: SessionsCmd) {
         SessionsCmd::Properties {
             website_id,
             session_id,
-            json,
+            json: _,
         } => {
             match client
                 .get::<Value>(&format!(
@@ -265,11 +263,7 @@ pub async fn run(cmd: SessionsCmd) {
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
@@ -279,7 +273,7 @@ pub async fn run(cmd: SessionsCmd) {
             start_at,
             end_at,
             timezone,
-            json,
+            json: _,
         } => {
             let query = vec![
                 ("startAt".into(), start_at.to_string()),
@@ -294,11 +288,7 @@ pub async fn run(cmd: SessionsCmd) {
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }

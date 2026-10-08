@@ -120,10 +120,7 @@ pub async fn run(cmd: StatsCmd) {
                 .await
             {
                 Ok(data) => {
-                    let visitors = data
-                        .get("visitors")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                    let visitors = data.get("visitors").and_then(|v| v.as_u64()).unwrap_or(0);
                     println!("Active visitors: {visitors}");
                 }
                 Err(e) => print_error(&e.to_string()),

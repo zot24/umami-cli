@@ -145,16 +145,15 @@ pub async fn run(cmd: UsersCmd) {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(sites) = items {
                         let rows: Vec<Vec<String>> = sites
                             .iter()
                             .map(|s| {
-                                vec![
-                                    val_str(s, "id"),
-                                    val_str(s, "name"),
-                                    val_str(s, "domain"),
-                                ]
+                                vec![val_str(s, "id"), val_str(s, "name"), val_str(s, "domain")]
                             })
                             .collect();
                         print_table(&["ID", "NAME", "DOMAIN"], &rows);
@@ -231,32 +230,21 @@ pub async fn run(cmd: UsersCmd) {
                 Err(e) => print_error(&e.to_string()),
             }
         }
-        UsersCmd::Websites { id, json } => {
+        UsersCmd::Websites { id, json: _ } => {
             match client
                 .get::<Value>(&format!("/api/users/{id}/websites"))
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
         }
-        UsersCmd::Teams { id, json } => {
-            match client
-                .get::<Value>(&format!("/api/users/{id}/teams"))
-                .await
-            {
+        UsersCmd::Teams { id, json: _ } => {
+            match client.get::<Value>(&format!("/api/users/{id}/teams")).await {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }

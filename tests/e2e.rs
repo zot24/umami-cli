@@ -86,7 +86,10 @@ async fn e2e_me_websites() {
     let token = login().await;
     let client = client_with_token(&token);
     let query = vec![];
-    let result: Value = client.get_with_query("/api/me/websites", &query).await.unwrap();
+    let result: Value = client
+        .get_with_query("/api/me/websites", &query)
+        .await
+        .unwrap();
     // Should return an object with data array or an array
     assert!(result.is_object() || result.is_array());
 }
@@ -163,10 +166,7 @@ async fn e2e_website_full_lifecycle() {
         ("timezone".to_string(), "UTC".to_string()),
     ];
     let pageviews: Value = client
-        .get_with_query(
-            &format!("/api/websites/{website_id}/pageviews"),
-            &pv_query,
-        )
+        .get_with_query(&format!("/api/websites/{website_id}/pageviews"), &pv_query)
         .await
         .unwrap();
     assert!(pageviews.is_object());
@@ -241,15 +241,16 @@ async fn e2e_team_full_lifecycle() {
     // Create team — API returns an array: [team_object, membership_object]
     let body = serde_json::json!({ "name": "E2E Test Team" });
     let created: Value = client.post("/api/teams", &body).await.unwrap();
-    let team = if created.is_array() { &created[0] } else { &created };
+    let team = if created.is_array() {
+        &created[0]
+    } else {
+        &created
+    };
     let team_id = team["id"].as_str().unwrap().to_string();
     assert_eq!(team["name"], "E2E Test Team");
 
     // Get team
-    let fetched: Value = client
-        .get(&format!("/api/teams/{team_id}"))
-        .await
-        .unwrap();
+    let fetched: Value = client.get(&format!("/api/teams/{team_id}")).await.unwrap();
     assert_eq!(fetched["id"], team_id);
 
     // Update team
@@ -306,10 +307,7 @@ async fn e2e_user_crud() {
     assert_eq!(created["username"], "e2e-test-user");
 
     // Get user
-    let fetched: Value = client
-        .get(&format!("/api/users/{user_id}"))
-        .await
-        .unwrap();
+    let fetched: Value = client.get(&format!("/api/users/{user_id}")).await.unwrap();
     assert_eq!(fetched["username"], "e2e-test-user");
 
     // Update user
@@ -469,10 +467,7 @@ async fn e2e_reports_list() {
         ("page".to_string(), "1".to_string()),
         ("websiteId".to_string(), website_id.to_string()),
     ];
-    let result: Value = client
-        .get_with_query("/api/reports", &query)
-        .await
-        .unwrap();
+    let result: Value = client.get_with_query("/api/reports", &query).await.unwrap();
     assert!(result.is_object() || result.is_array());
 
     // Cleanup

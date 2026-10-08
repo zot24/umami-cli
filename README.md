@@ -50,9 +50,39 @@ umami-cli stats summary --website-id <id> --start 2024-01-01 --end 2024-01-31
 umami-cli realtime --website-id <id>
 ```
 
+## Authentication
+
+`auth login` saves a session token for your server. In a terminal it prompts for anything you leave out:
+
+```sh
+umami-cli auth login --server https://analytics.example.com --username admin
+```
+
+If the account has two-factor authentication, login then asks for the 6-digit code from your authenticator app. Pass `--otp <code>` to skip the prompt, or `--backup-code <code>` to use one of your backup codes instead.
+
+Without a terminal (scripts, CI, Claude Code's `!` prefix) nothing can be prompted, so pass everything up front:
+
+```sh
+printf '%s\n' "$UMAMI_PASSWORD" | umami-cli auth login \
+  --server https://analytics.example.com --username admin --password-stdin --otp 123456
+```
+
+The password comes from, in order:
+
+1. `--password <password>` (visible in shell history and `ps`)
+2. `--password-stdin` (the first line of stdin, which must be piped)
+3. the `UMAMI_PASSWORD` environment variable
+4. a hidden prompt, in a terminal
+
+Without a terminal, a missing server, username, password or two-factor code is an error that names the flag to pass. Login saves the config only once the server returns a token, so a failed login exits non-zero and leaves the old config as it was.
+
+- `umami-cli auth status` shows the server, username and config path
+- `umami-cli auth verify` checks the saved token with the server
+- `umami-cli auth logout` deletes the saved credentials
+
 ## Configuration
 
-Config is stored at `~/.config/umami-cli/config.toml` and managed automatically through the `auth login` command.
+Config is stored in your platform's config directory (`~/.config/umami-cli/config.toml` on Linux, `~/Library/Application Support/umami-cli/config.toml` on macOS; `umami-cli auth status` prints the path) and managed automatically through the `auth login` command.
 
 ```toml
 server_url = "https://analytics.example.com"

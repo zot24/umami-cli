@@ -221,16 +221,16 @@ pub async fn run(cmd: ReportsCmd) {
             if let Some(s) = search {
                 query.push(("search".into(), s));
             }
-            match client
-                .get_with_query::<Value>("/api/reports", &query)
-                .await
-            {
+            match client.get_with_query::<Value>("/api/reports", &query).await {
                 Ok(data) => {
                     if json {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(reports) = items {
                         let rows: Vec<Vec<String>> = reports
                             .iter()
@@ -251,14 +251,10 @@ pub async fn run(cmd: ReportsCmd) {
                 Err(e) => print_error(&e.to_string()),
             }
         }
-        ReportsCmd::Get { id, json } => {
+        ReportsCmd::Get { id, json: _ } => {
             match client.get::<Value>(&format!("/api/reports/{id}")).await {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
@@ -274,9 +270,18 @@ pub async fn run(cmd: ReportsCmd) {
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "attribution", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "attribution",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
         ReportsCmd::Funnel {
             website_id,
@@ -285,20 +290,38 @@ pub async fn run(cmd: ReportsCmd) {
             urls,
             window,
             timezone,
-            json,
+            json: _,
         } => {
             let urls_vec: Vec<&str> = urls.split(',').map(|s| s.trim()).collect();
             let extra = serde_json::json!({ "urls": urls_vec, "window": window });
-            run_report(&client, "funnel", &website_id, &start_date, &end_date, &timezone, Some(extra), json).await;
+            run_report(
+                &client,
+                "funnel",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                Some(extra),
+            )
+            .await;
         }
         ReportsCmd::Retention {
             website_id,
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "retention", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "retention",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
         ReportsCmd::Journey {
             website_id,
@@ -306,55 +329,109 @@ pub async fn run(cmd: ReportsCmd) {
             end_date,
             steps,
             timezone,
-            json,
+            json: _,
         } => {
             let extra = serde_json::json!({ "steps": steps });
-            run_report(&client, "journey", &website_id, &start_date, &end_date, &timezone, Some(extra), json).await;
+            run_report(
+                &client,
+                "journey",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                Some(extra),
+            )
+            .await;
         }
         ReportsCmd::Revenue {
             website_id,
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "revenue", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "revenue",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
         ReportsCmd::Utm {
             website_id,
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "utm", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "utm",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
         ReportsCmd::Breakdown {
             website_id,
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "breakdown", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "breakdown",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
         ReportsCmd::Goal {
             website_id,
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "goal", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "goal",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
         ReportsCmd::Performance {
             website_id,
             start_date,
             end_date,
             timezone,
-            json,
+            json: _,
         } => {
-            run_report(&client, "performance", &website_id, &start_date, &end_date, &timezone, None, json).await;
+            run_report(
+                &client,
+                "performance",
+                &website_id,
+                &start_date,
+                &end_date,
+                &timezone,
+                None,
+            )
+            .await;
         }
     }
 }
@@ -367,7 +444,6 @@ async fn run_report(
     end_date: &str,
     timezone: &str,
     extra_params: Option<Value>,
-    json: bool,
 ) {
     let mut parameters = serde_json::json!({
         "startDate": start_date,
@@ -393,11 +469,7 @@ async fn run_report(
         .await
     {
         Ok(data) => {
-            if json {
-                print_json(&data);
-            } else {
-                print_json(&data);
-            }
+            print_json(&data);
         }
         Err(e) => print_error(&e.to_string()),
     }

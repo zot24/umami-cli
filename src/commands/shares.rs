@@ -99,17 +99,10 @@ pub async fn run(cmd: SharesCmd) {
                 Err(e) => print_error(&e.to_string()),
             }
         }
-        SharesCmd::Get { id, json } => {
-            match client
-                .get::<Value>(&format!("/api/share/id/{id}"))
-                .await
-            {
+        SharesCmd::Get { id, json: _ } => {
+            match client.get::<Value>(&format!("/api/share/id/{id}")).await {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }
@@ -134,25 +127,21 @@ pub async fn run(cmd: SharesCmd) {
             }
         }
         SharesCmd::Delete { id } => {
-            match client
-                .delete::<Value>(&format!("/api/share/id/{id}"))
-                .await
-            {
+            match client.delete::<Value>(&format!("/api/share/id/{id}")).await {
                 Ok(_) => print_success("Share page deleted."),
                 Err(e) => print_error(&e.to_string()),
             }
         }
-        SharesCmd::ListForWebsite { website_id, json } => {
+        SharesCmd::ListForWebsite {
+            website_id,
+            json: _,
+        } => {
             match client
                 .get::<Value>(&format!("/api/websites/{website_id}/shares"))
                 .await
             {
                 Ok(data) => {
-                    if json {
-                        print_json(&data);
-                    } else {
-                        print_json(&data);
-                    }
+                    print_json(&data);
                 }
                 Err(e) => print_error(&e.to_string()),
             }

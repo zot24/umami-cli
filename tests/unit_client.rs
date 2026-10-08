@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use umami_cli::api::client::{session_token, two_factor_challenge, TwoFactorCode};
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -24,7 +25,9 @@ async fn login_success() {
 
     Mock::given(method("POST"))
         .and(path("/api/auth/login"))
-        .and(body_json(json!({ "username": "admin", "password": "umami" })))
+        .and(body_json(
+            json!({ "username": "admin", "password": "umami" }),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .mount(&server)
         .await;
@@ -52,6 +55,138 @@ async fn login_failure_invalid_credentials() {
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("401"));
+}
+
+#[test]
+fn session_token_names_keys_not_values() {
+    assert_eq!(session_token(&json!({ "token": "jwt" })).unwrap(), "jwt");
+    for answer in [
+        json!({ "token": "", "user": { "username": "secret-name" } }),
+        json!({ "token": "  ", "user": {} }),
+        json!({ "user": { "username": "secret-name" }, "token": 42 }),
+    ] {
+        let err = session_token(&answer).unwrap_err().to_string();
+        assert!(err.contains("(answer keys: token, user)"), "{err}");
+        assert!(!err.contains("secret-name"), "{err}");
+    }
+}
+
+#[test]
+fn two_factor_challenge_reads_partial_token() {
+    let challenge = json!({ "requiresTwoFactor": true, "partialToken": "partial" });
+    assert_eq!(
+        two_factor_challenge(&challenge).unwrap().as_deref(),
+        Some("partial")
+    );
+    assert!(two_factor_challenge(&json!({ "token": "jwt" }))
+        .unwrap()
+        .is_none());
+    assert!(
+        two_factor_challenge(&json!({ "requiresTwoFactor": false, "partialToken": "p" }))
+            .unwrap()
+            .is_none()
+    );
+    let err = two_factor_challenge(&json!({ "requiresTwoFactor": true, "partialToken": "" }))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("(answer keys: partialToken, requiresTwoFactor)"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn login_returns_two_factor_challenge() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/login"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!({ "requiresTwoFactor": true, "partialToken": "partial-token" }),
+            ),
+        )
+        .mount(&server)
+        .await;
+
+    let mut client = test_client(&server, None);
+    let data = client.login("admin", "umami").await.unwrap();
+    assert_eq!(
+        two_factor_challenge(&data).unwrap().as_deref(),
+        Some("partial-token")
+    );
+    // A partial token is not a session: the client stays unauthenticated.
+    let result: Result<Value, _> = client.get("/api/websites").await;
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Not authenticated"));
+}
+
+#[tokio::test]
+async fn verify_two_factor_with_otp() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/2fa/verify"))
+        .and(header("authorization", "Bearer partial-token"))
+        .and(body_json(json!({ "token": "123456" })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "token": "full-token", "user": { "id": "user-1" } })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut client = test_client(&server, None);
+    let code = TwoFactorCode::Otp("123456".into());
+    let data = client
+        .verify_two_factor("partial-token", &code)
+        .await
+        .unwrap();
+    assert_eq!(session_token(&data).unwrap(), "full-token");
+}
+
+#[tokio::test]
+async fn verify_two_factor_with_backup_code() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/2fa/verify"))
+        .and(header("authorization", "Bearer partial-token"))
+        .and(body_json(json!({ "backupCode": "abcd-efgh" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "token": "full-token" })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut client = test_client(&server, None);
+    let code = TwoFactorCode::Backup("abcd-efgh".into());
+    let data = client
+        .verify_two_factor("partial-token", &code)
+        .await
+        .unwrap();
+    assert_eq!(session_token(&data).unwrap(), "full-token");
+}
+
+#[tokio::test]
+async fn verify_two_factor_error_keeps_status_and_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/2fa/verify"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({ "error": {
+            "code": "two-factor-error-too-many-attempts",
+            "lockedUntil": "2026-10-08T18:15:00.000Z" } })))
+        .mount(&server)
+        .await;
+
+    let mut client = test_client(&server, None);
+    let code = TwoFactorCode::Otp("123456".into());
+    let err = client
+        .verify_two_factor("partial-token", &code)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("429"), "{err}");
+    assert!(err.contains("two-factor-error-too-many-attempts"), "{err}");
 }
 
 #[tokio::test]
@@ -87,7 +222,10 @@ async fn get_websites_success() {
 
     let client = test_client(&server, Some("test-token"));
     let query = vec![("page".to_string(), "1".to_string())];
-    let result: Value = client.get_with_query("/api/websites", &query).await.unwrap();
+    let result: Value = client
+        .get_with_query("/api/websites", &query)
+        .await
+        .unwrap();
     let data = result["data"].as_array().unwrap();
     assert_eq!(data.len(), 2);
     assert_eq!(data[0]["name"], "My Site");
@@ -106,7 +244,9 @@ async fn create_website_success() {
     Mock::given(method("POST"))
         .and(path("/api/websites"))
         .and(header("Authorization", "Bearer test-token"))
-        .and(body_json(json!({ "name": "New Site", "domain": "new.example.com" })))
+        .and(body_json(
+            json!({ "name": "New Site", "domain": "new.example.com" }),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(&created))
         .mount(&server)
         .await;

@@ -114,7 +114,10 @@ pub async fn run(cmd: TeamsCmd) {
                     print_json(&data);
                     return;
                 }
-                let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                let items = data
+                    .get("data")
+                    .and_then(|d| d.as_array())
+                    .or_else(|| data.as_array());
                 if let Some(teams) = items {
                     let rows: Vec<Vec<String>> = teams
                         .iter()
@@ -192,10 +195,7 @@ pub async fn run(cmd: TeamsCmd) {
             }
         }
         TeamsCmd::Members { id, json } => {
-            match client
-                .get::<Value>(&format!("/api/teams/{id}/users"))
-                .await
-            {
+            match client.get::<Value>(&format!("/api/teams/{id}/users")).await {
                 Ok(data) => {
                     if json {
                         print_json(&data);
@@ -205,11 +205,7 @@ pub async fn run(cmd: TeamsCmd) {
                         let rows: Vec<Vec<String>> = members
                             .iter()
                             .map(|m| {
-                                vec![
-                                    val_str(m, "id"),
-                                    val_str(m, "username"),
-                                    val_str(m, "role"),
-                                ]
+                                vec![val_str(m, "id"), val_str(m, "username"), val_str(m, "role")]
                             })
                             .collect();
                         print_table(&["ID", "USERNAME", "ROLE"], &rows);
@@ -277,11 +273,7 @@ pub async fn run(cmd: TeamsCmd) {
                         let rows: Vec<Vec<String>> = sites
                             .iter()
                             .map(|s| {
-                                vec![
-                                    val_str(s, "id"),
-                                    val_str(s, "name"),
-                                    val_str(s, "domain"),
-                                ]
+                                vec![val_str(s, "id"), val_str(s, "name"), val_str(s, "domain")]
                             })
                             .collect();
                         print_table(&["ID", "NAME", "DOMAIN"], &rows);
