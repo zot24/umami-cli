@@ -1,12 +1,16 @@
+use std::io::IsTerminal;
+
 use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
-
 use serde_json::Value;
 
 use crate::api::client::{session_token, two_factor_challenge, ApiError, TwoFactorCode};
 use crate::api::UmamiClient;
 use crate::config::Config;
 use crate::output::{print_error, print_json, print_success};
+
+/// Env var read for the password when neither --password nor --password-stdin is given.
+const PASSWORD_ENV: &str = "UMAMI_PASSWORD";
 
 #[derive(Args)]
 pub struct LoginArgs {
@@ -16,9 +20,12 @@ pub struct LoginArgs {
     /// Username
     #[arg(long)]
     username: Option<String>,
-    /// Password
-    #[arg(long)]
+    /// Password (visible in shell history and `ps`; prefer --password-stdin or UMAMI_PASSWORD)
+    #[arg(long, conflicts_with = "password_stdin")]
     password: Option<String>,
+    /// Read the password from the first line of stdin
+    #[arg(long)]
+    password_stdin: bool,
     /// Two-factor code from your authenticator app (6 digits)
     #[arg(long, value_name = "CODE", conflicts_with = "backup_code")]
     otp: Option<String>,
@@ -97,21 +104,15 @@ async fn login(args: LoginArgs) -> Result<(), String> {
         (None, Some(_)) => return Err("The backup code is empty.".into()),
         (None, None) => None,
     };
-    let server = args.server.unwrap_or_else(|| {
-        Input::new()
-            .with_prompt("Server URL")
-            .interact_text()
-            .unwrap()
-    });
-    let username = args.username.unwrap_or_else(|| {
-        Input::new()
-            .with_prompt("Username")
-            .interact_text()
-            .unwrap()
-    });
-    let password = args
-        .password
-        .unwrap_or_else(|| Password::new().with_prompt("Password").interact().unwrap());
+    let server = match args.server {
+        Some(server) => server,
+        None => prompt_line("Server URL", "--server <url>")?,
+    };
+    let username = match args.username {
+        Some(username) => username,
+        None => prompt_line("Username", "--username <name>")?,
+    };
+    let password = password(args.password, args.password_stdin)?;
 
     let mut client = UmamiClient::new(&server, None);
     let mut answer = client
@@ -143,6 +144,69 @@ async fn login(args: LoginArgs) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether dialoguer can prompt: it draws on stderr and reads the terminal
+/// (stdin, or /dev/tty when stdin is piped). Without one it errors instead.
+fn can_prompt() -> bool {
+    std::io::stderr().is_terminal()
+}
+
+fn prompt_line(label: &str, flag: &str) -> Result<String, String> {
+    if !can_prompt() {
+        return Err(format!(
+            "{label} not given and no terminal to ask for it. Pass {flag}."
+        ));
+    }
+    Input::new()
+        .with_prompt(label)
+        .interact_text()
+        .map_err(|e| format!("Could not read the {}: {e}", label.to_lowercase()))
+}
+
+/// The password from, in order: --password, --password-stdin, UMAMI_PASSWORD,
+/// a hidden prompt.
+fn password(flag: Option<String>, from_stdin: bool) -> Result<String, String> {
+    if let Some(password) = flag {
+        return Ok(password);
+    }
+    if from_stdin {
+        return read_password_stdin();
+    }
+    if let Some(password) = std::env::var(PASSWORD_ENV).ok().filter(|p| !p.is_empty()) {
+        return Ok(password);
+    }
+    if !can_prompt() {
+        return Err(format!(
+            "Password not given and no terminal to ask for it. \
+             Pass --password-stdin (one line on stdin) or set {PASSWORD_ENV}."
+        ));
+    }
+    Password::new()
+        .with_prompt("Password")
+        .interact()
+        .map_err(|e| format!("Could not read the password: {e}"))
+}
+
+fn read_password_stdin() -> Result<String, String> {
+    let stdin = std::io::stdin();
+    // Typed into a terminal the password would echo; the flag is for pipes.
+    if stdin.is_terminal() {
+        return Err(
+            "--password-stdin reads a piped password, but stdin is a terminal. \
+             Drop the flag to be prompted instead."
+                .into(),
+        );
+    }
+    let mut line = String::new();
+    stdin
+        .read_line(&mut line)
+        .map_err(|e| format!("Could not read the password from stdin: {e}"))?;
+    let password = line.trim_end_matches(['\r', '\n']);
+    if password.is_empty() {
+        return Err("--password-stdin got no password on stdin.".into());
+    }
+    Ok(password.to_string())
+}
+
 /// A TOTP code as the server takes it: exactly 6 digits.
 fn otp_code(code: &str) -> Result<String, String> {
     let code = code.trim();
@@ -154,6 +218,11 @@ fn otp_code(code: &str) -> Result<String, String> {
 }
 
 fn prompt_otp() -> Result<TwoFactorCode, String> {
+    if !can_prompt() {
+        return Err("Two-factor code needed and no terminal to ask for it. \
+                    Pass --otp <6 digits> or --backup-code <code>."
+            .into());
+    }
     let otp = Password::new()
         .with_prompt("Two-factor code (6 digits)")
         .validate_with(|input: &String| otp_code(input).map(|_| ()))
