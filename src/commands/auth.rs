@@ -1,7 +1,9 @@
 use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
 
-use crate::api::client::session_token;
+use serde_json::Value;
+
+use crate::api::client::{session_token, two_factor_challenge, ApiError, TwoFactorCode};
 use crate::api::UmamiClient;
 use crate::config::Config;
 use crate::output::{print_error, print_json, print_success};
@@ -17,6 +19,12 @@ pub struct LoginArgs {
     /// Password
     #[arg(long)]
     password: Option<String>,
+    /// Two-factor code from your authenticator app (6 digits)
+    #[arg(long, value_name = "CODE", conflicts_with = "backup_code")]
+    otp: Option<String>,
+    /// One of your two-factor backup codes, instead of --otp
+    #[arg(long, value_name = "CODE")]
+    backup_code: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -80,6 +88,15 @@ pub async fn run(cmd: AuthCmd) {
 /// Logs in and saves the session. The config is written only once the server has
 /// answered with a usable token, so a failed login leaves the old one untouched.
 async fn login(args: LoginArgs) -> Result<(), String> {
+    // Check a code given up front before anything reaches the server.
+    let code = match (args.otp, args.backup_code) {
+        (Some(otp), _) => Some(TwoFactorCode::Otp(otp_code(&otp)?)),
+        (None, Some(backup)) if !backup.trim().is_empty() => {
+            Some(TwoFactorCode::Backup(backup.trim().to_string()))
+        }
+        (None, Some(_)) => return Err("The backup code is empty.".into()),
+        (None, None) => None,
+    };
     let server = args.server.unwrap_or_else(|| {
         Input::new()
             .with_prompt("Server URL")
@@ -97,10 +114,20 @@ async fn login(args: LoginArgs) -> Result<(), String> {
         .unwrap_or_else(|| Password::new().with_prompt("Password").interact().unwrap());
 
     let mut client = UmamiClient::new(&server, None);
-    let answer = client
+    let mut answer = client
         .login(&username, &password)
         .await
-        .map_err(|e| format!("Login failed: {e}"))?;
+        .map_err(login_error)?;
+    if let Some(partial_token) = two_factor_challenge(&answer).map_err(login_error)? {
+        let code = match code {
+            Some(code) => code,
+            None => prompt_otp()?,
+        };
+        answer = client
+            .verify_two_factor(&partial_token, &code)
+            .await
+            .map_err(login_error)?;
+    }
     let token =
         session_token(&answer).map_err(|e| format!("Login failed: {e} Config left unchanged."))?;
 
@@ -114,4 +141,70 @@ async fn login(args: LoginArgs) -> Result<(), String> {
         .map_err(|e| format!("Failed to save config: {e}"))?;
     print_success("Logged in successfully.");
     Ok(())
+}
+
+/// A TOTP code as the server takes it: exactly 6 digits.
+fn otp_code(code: &str) -> Result<String, String> {
+    let code = code.trim();
+    if code.len() == 6 && code.bytes().all(|b| b.is_ascii_digit()) {
+        Ok(code.to_string())
+    } else {
+        Err("The two-factor code must be 6 digits.".into())
+    }
+}
+
+fn prompt_otp() -> Result<TwoFactorCode, String> {
+    let otp = Password::new()
+        .with_prompt("Two-factor code (6 digits)")
+        .validate_with(|input: &String| otp_code(input).map(|_| ()))
+        .interact()
+        .map_err(|e| format!("Could not read the two-factor code: {e}"))?;
+    Ok(TwoFactorCode::Otp(otp_code(&otp)?))
+}
+
+/// A readable message for a failed login or two-factor step. Umami answers
+/// errors as `{ "error": { "code", "message", "lockedUntil"? } }`.
+fn login_error(err: ApiError) -> String {
+    let ApiError::Api { status, body } = &err else {
+        return format!("Login failed: {err}");
+    };
+    let Some(error) = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|v| v.get("error").filter(|e| e.is_object()).cloned())
+    else {
+        return format!("Login failed: {err}");
+    };
+    let code = error
+        .get("code")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let mut msg = match code {
+        "incorrect-username-password" => "Incorrect username or password.".to_string(),
+        "two-factor-error-invalid-code" => "Invalid two-factor code.".into(),
+        "two-factor-error-invalid-backup-code" => "Invalid backup code.".into(),
+        "two-factor-error-code-used" => {
+            "That two-factor code was already used. Wait for the next one.".into()
+        }
+        "two-factor-error-too-many-attempts" => "Too many failed two-factor attempts.".into(),
+        "two-factor-error-missing-token" | "two-factor-error-invalid-partial-token" => {
+            "The two-factor step expired or was rejected. Log in again.".into()
+        }
+        "two-factor-error-not-enabled" => "Two-factor auth is not enabled for this user.".into(),
+        "two-factor-error-not-configured" => {
+            "Two-factor auth is not configured on the server (TWO_FACTOR_ENCRYPTION_KEY).".into()
+        }
+        _ => {
+            let message = error.get("message").and_then(Value::as_str);
+            match (message, code) {
+                (Some(m), "") => m.to_string(),
+                (Some(m), c) => format!("{m} ({c})."),
+                (None, "") => format!("{err}"),
+                (None, c) => format!("{c}."),
+            }
+        }
+    };
+    if let Some(until) = error.get("lockedUntil").and_then(Value::as_str) {
+        msg.push_str(&format!(" Locked until {until}."));
+    }
+    format!("Login failed ({status}): {msg}")
 }

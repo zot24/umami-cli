@@ -30,6 +30,29 @@ pub fn session_token(data: &Value) -> ApiResult<String> {
     }
 }
 
+/// The partial token when a login answer asks for a second factor
+/// (`{ requiresTwoFactor: true, partialToken }`), or `None` when it does not.
+pub fn two_factor_challenge(data: &Value) -> ApiResult<Option<String>> {
+    if data.get("requiresTwoFactor").and_then(Value::as_bool) != Some(true) {
+        return Ok(None);
+    }
+    match data.get("partialToken").and_then(Value::as_str) {
+        Some(token) if !token.trim().is_empty() => Ok(Some(token.to_string())),
+        _ => Err(ApiError::Other(format!(
+            "Login answer asks for two-factor auth but has no usable partialToken (answer keys: {}).",
+            answer_keys(data)
+        ))),
+    }
+}
+
+/// The second factor sent to `/api/2fa/verify`.
+pub enum TwoFactorCode {
+    /// The 6-digit code from an authenticator app.
+    Otp(String),
+    /// One of the user's one-time backup codes.
+    Backup(String),
+}
+
 /// The top-level keys of an answer, for error messages that must not leak values.
 pub fn answer_keys(data: &Value) -> String {
     match data.as_object() {
@@ -110,6 +133,32 @@ impl UmamiClient {
         }
 
         let data: Value = resp.json().await?;
+        if let Ok(token) = session_token(&data) {
+            self.token = Some(token);
+        }
+        Ok(data)
+    }
+
+    /// Completes a two-factor login with the partial token from `login` as the
+    /// bearer token. The answer has the same shape as a plain login's.
+    pub async fn verify_two_factor(
+        &mut self,
+        partial_token: &str,
+        code: &TwoFactorCode,
+    ) -> ApiResult<Value> {
+        let body = match code {
+            TwoFactorCode::Otp(otp) => serde_json::json!({ "token": otp }),
+            TwoFactorCode::Backup(backup) => serde_json::json!({ "backupCode": backup }),
+        };
+        let resp = self
+            .http
+            .post(format!("{}/api/2fa/verify", self.base_url))
+            .bearer_auth(partial_token)
+            .json(&body)
+            .send()
+            .await?;
+
+        let data: Value = Self::handle_response(resp).await?;
         if let Ok(token) = session_token(&data) {
             self.token = Some(token);
         }
