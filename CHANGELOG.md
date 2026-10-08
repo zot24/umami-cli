@@ -25,6 +25,9 @@ All notable changes to this project are documented here. The format follows
   names the flag to pass.
 - Server errors during login (wrong password, invalid or reused two-factor
   code, lockout with `lockedUntil`) print as readable messages.
+- On Unix, `config.toml`, which holds the token, is saved with mode `0600`
+  (owner only). It was created `0644`. The next login tightens an existing
+  `0644` file.
 
 ### Changed
 

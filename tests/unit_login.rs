@@ -3,6 +3,7 @@
 //! assert_cmd the binary has no terminal, which is the no-TTY case.
 #![cfg(unix)]
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Output;
 
@@ -39,6 +40,11 @@ fn write_old_config(home: &TempDir) {
 
 fn read_config(home: &TempDir) -> String {
     std::fs::read_to_string(config_path(home)).unwrap()
+}
+
+fn config_mode(home: &TempDir) -> u32 {
+    let meta = std::fs::metadata(config_path(home)).unwrap();
+    meta.permissions().mode() & 0o777
 }
 
 fn umami(home: &TempDir) -> Command {
@@ -154,6 +160,40 @@ async fn login_saves_token_from_plain_answer() {
         .success()
         .stdout(predicate::str::contains("Token:    (saved)"))
         .stdout(predicate::str::contains(home.path().to_str().unwrap()));
+}
+
+/// The saved file holds the bearer token, so only its owner may read it.
+#[tokio::test]
+async fn login_creates_config_with_mode_0600() {
+    let server = MockServer::start().await;
+    mock_login(&server, 200, json!({ "token": TOKEN }), 1).await;
+    let home = TempDir::new().unwrap();
+    assert!(!config_path(&home).exists());
+
+    login(&home, &server)
+        .env("UMAMI_PASSWORD", PASSWORD)
+        .assert()
+        .success();
+    assert_saved(&home, &server);
+    assert_eq!(config_mode(&home), 0o600);
+}
+
+#[tokio::test]
+async fn login_tightens_existing_config_to_mode_0600() {
+    let server = MockServer::start().await;
+    mock_login(&server, 200, json!({ "token": TOKEN }), 1).await;
+    let home = TempDir::new().unwrap();
+    write_old_config(&home);
+    let loose = std::fs::Permissions::from_mode(0o644);
+    std::fs::set_permissions(config_path(&home), loose).unwrap();
+    assert_eq!(config_mode(&home), 0o644);
+
+    login(&home, &server)
+        .env("UMAMI_PASSWORD", PASSWORD)
+        .assert()
+        .success();
+    assert_saved(&home, &server);
+    assert_eq!(config_mode(&home), 0o600);
 }
 
 #[tokio::test]
