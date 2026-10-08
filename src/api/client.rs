@@ -18,6 +18,27 @@ pub enum ApiError {
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
+/// The session token from a login answer. When the answer has no usable token,
+/// the error names the answer's keys, never their values.
+pub fn session_token(data: &Value) -> ApiResult<String> {
+    match data.get("token").and_then(Value::as_str) {
+        Some(token) if !token.trim().is_empty() => Ok(token.to_string()),
+        _ => Err(ApiError::Other(format!(
+            "Login answer has no usable token (answer keys: {}).",
+            answer_keys(data)
+        ))),
+    }
+}
+
+/// The top-level keys of an answer, for error messages that must not leak values.
+pub fn answer_keys(data: &Value) -> String {
+    match data.as_object() {
+        Some(map) if !map.is_empty() => map.keys().cloned().collect::<Vec<_>>().join(", "),
+        Some(_) => "none".into(),
+        None => "none, not a JSON object".into(),
+    }
+}
+
 pub struct UmamiClient {
     http: reqwest::Client,
     base_url: String,
@@ -37,7 +58,11 @@ impl UmamiClient {
         let base_url = config
             .server_url
             .as_deref()
-            .ok_or_else(|| ApiError::Other("No server URL configured. Run `umami-cli auth login` first.".into()))?
+            .ok_or_else(|| {
+                ApiError::Other(
+                    "No server URL configured. Run `umami-cli auth login` first.".into(),
+                )
+            })?
             .trim_end_matches('/')
             .to_string();
 
@@ -85,8 +110,8 @@ impl UmamiClient {
         }
 
         let data: Value = resp.json().await?;
-        if let Some(token) = data.get("token").and_then(|t| t.as_str()) {
-            self.token = Some(token.to_string());
+        if let Ok(token) = session_token(&data) {
+            self.token = Some(token);
         }
         Ok(data)
     }

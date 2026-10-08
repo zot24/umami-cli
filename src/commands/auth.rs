@@ -1,24 +1,28 @@
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
 
+use crate::api::client::session_token;
 use crate::api::UmamiClient;
 use crate::config::Config;
 use crate::output::{print_error, print_json, print_success};
 
+#[derive(Args)]
+pub struct LoginArgs {
+    /// Server URL (e.g. https://analytics.example.com)
+    #[arg(long)]
+    server: Option<String>,
+    /// Username
+    #[arg(long)]
+    username: Option<String>,
+    /// Password
+    #[arg(long)]
+    password: Option<String>,
+}
+
 #[derive(Subcommand)]
 pub enum AuthCmd {
     /// Log in to your Umami instance
-    Login {
-        /// Server URL (e.g. https://analytics.example.com)
-        #[arg(long)]
-        server: Option<String>,
-        /// Username
-        #[arg(long)]
-        username: Option<String>,
-        /// Password
-        #[arg(long)]
-        password: Option<String>,
-    },
+    Login(LoginArgs),
     /// Verify current authentication token
     Verify,
     /// Log out and clear saved credentials
@@ -29,56 +33,10 @@ pub enum AuthCmd {
 
 pub async fn run(cmd: AuthCmd) {
     match cmd {
-        AuthCmd::Login {
-            server,
-            username,
-            password,
-        } => {
-            let server = server.unwrap_or_else(|| {
-                Input::new()
-                    .with_prompt("Server URL")
-                    .interact_text()
-                    .unwrap()
-            });
-            let username = username.unwrap_or_else(|| {
-                Input::new()
-                    .with_prompt("Username")
-                    .interact_text()
-                    .unwrap()
-            });
-            let password = password.unwrap_or_else(|| {
-                Password::new()
-                    .with_prompt("Password")
-                    .interact()
-                    .unwrap()
-            });
-
-            let mut config = Config::default();
-            config.server_url = Some(server.clone());
-
-            let mut client = match UmamiClient::from_config(&config) {
-                Ok(c) => c,
-                Err(e) => {
-                    print_error(&e.to_string());
-                    return;
-                }
-            };
-
-            match client.login(&username, &password).await {
-                Ok(data) => {
-                    let token = data
-                        .get("token")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or_default();
-                    config.token = Some(token.to_string());
-                    config.username = Some(username);
-                    if let Err(e) = config.save() {
-                        print_error(&format!("Failed to save config: {e}"));
-                        return;
-                    }
-                    print_success("Logged in successfully.");
-                }
-                Err(e) => print_error(&format!("Login failed: {e}")),
+        AuthCmd::Login(args) => {
+            if let Err(e) = login(args).await {
+                print_error(&e);
+                std::process::exit(1);
             }
         }
         AuthCmd::Verify => {
@@ -117,4 +75,43 @@ pub async fn run(cmd: AuthCmd) {
             }
         }
     }
+}
+
+/// Logs in and saves the session. The config is written only once the server has
+/// answered with a usable token, so a failed login leaves the old one untouched.
+async fn login(args: LoginArgs) -> Result<(), String> {
+    let server = args.server.unwrap_or_else(|| {
+        Input::new()
+            .with_prompt("Server URL")
+            .interact_text()
+            .unwrap()
+    });
+    let username = args.username.unwrap_or_else(|| {
+        Input::new()
+            .with_prompt("Username")
+            .interact_text()
+            .unwrap()
+    });
+    let password = args
+        .password
+        .unwrap_or_else(|| Password::new().with_prompt("Password").interact().unwrap());
+
+    let mut client = UmamiClient::new(&server, None);
+    let answer = client
+        .login(&username, &password)
+        .await
+        .map_err(|e| format!("Login failed: {e}"))?;
+    let token =
+        session_token(&answer).map_err(|e| format!("Login failed: {e} Config left unchanged."))?;
+
+    let config = Config {
+        server_url: Some(server),
+        token: Some(token),
+        username: Some(username),
+    };
+    config
+        .save()
+        .map_err(|e| format!("Failed to save config: {e}"))?;
+    print_success("Logged in successfully.");
+    Ok(())
 }
