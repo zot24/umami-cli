@@ -11,7 +11,9 @@ fn shows_help() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("CLI tool for managing self-hosted Umami"));
+        .stdout(predicate::str::contains(
+            "CLI tool for managing self-hosted Umami",
+        ));
 }
 
 #[test]
@@ -170,17 +172,12 @@ fn pixels_subcommand_help() {
 
 #[test]
 fn unknown_subcommand_fails() {
-    cli()
-        .arg("nonexistent")
-        .assert()
-        .failure();
+    cli().arg("nonexistent").assert().failure();
 }
 
 #[test]
 fn auth_status_when_not_logged_in() {
-    cli()
-        .args(["auth", "status"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Not authenticated").or(predicate::str::contains("Server:")));
+    cli().args(["auth", "status"]).assert().success().stdout(
+        predicate::str::contains("Not authenticated").or(predicate::str::contains("Server:")),
+    );
 }

@@ -129,20 +129,22 @@ pub async fn run(cmd: WebsitesCmd) {
                 Err(e) => print_error(&e.to_string()),
             }
         }
-        WebsitesCmd::Get { id, json } => match client.get::<Value>(&format!("/api/websites/{id}")).await {
-            Ok(data) => {
-                if json {
-                    print_json(&data);
-                } else {
-                    println!("ID:      {}", val_str(&data, "id"));
-                    println!("Name:    {}", val_str(&data, "name"));
-                    println!("Domain:  {}", val_str(&data, "domain"));
-                    println!("Share:   {}", val_str(&data, "shareId"));
-                    println!("Created: {}", val_str(&data, "createdAt"));
+        WebsitesCmd::Get { id, json } => {
+            match client.get::<Value>(&format!("/api/websites/{id}")).await {
+                Ok(data) => {
+                    if json {
+                        print_json(&data);
+                    } else {
+                        println!("ID:      {}", val_str(&data, "id"));
+                        println!("Name:    {}", val_str(&data, "name"));
+                        println!("Domain:  {}", val_str(&data, "domain"));
+                        println!("Share:   {}", val_str(&data, "shareId"));
+                        println!("Created: {}", val_str(&data, "createdAt"));
+                    }
                 }
+                Err(e) => print_error(&e.to_string()),
             }
-            Err(e) => print_error(&e.to_string()),
-        },
+        }
         WebsitesCmd::Create {
             name,
             domain,

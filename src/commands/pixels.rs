@@ -73,26 +73,20 @@ pub async fn run(cmd: PixelsCmd) {
             if let Some(s) = search {
                 query.push(("search".into(), s));
             }
-            match client
-                .get_with_query::<Value>("/api/pixels", &query)
-                .await
-            {
+            match client.get_with_query::<Value>("/api/pixels", &query).await {
                 Ok(data) => {
                     if json {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(pixels) = items {
                         let rows: Vec<Vec<String>> = pixels
                             .iter()
-                            .map(|p| {
-                                vec![
-                                    val_str(p, "id"),
-                                    val_str(p, "name"),
-                                    val_str(p, "slug"),
-                                ]
-                            })
+                            .map(|p| vec![val_str(p, "id"), val_str(p, "name"), val_str(p, "slug")])
                             .collect();
                         print_table(&["ID", "NAME", "SLUG"], &rows);
                     } else {
@@ -153,10 +147,7 @@ pub async fn run(cmd: PixelsCmd) {
             }
         }
         PixelsCmd::Delete { id } => {
-            match client
-                .delete::<Value>(&format!("/api/pixels/{id}"))
-                .await
-            {
+            match client.delete::<Value>(&format!("/api/pixels/{id}")).await {
                 Ok(_) => print_success("Pixel deleted."),
                 Err(e) => print_error(&e.to_string()),
             }

@@ -79,16 +79,16 @@ pub async fn run(cmd: LinksCmd) {
             if let Some(s) = search {
                 query.push(("search".into(), s));
             }
-            match client
-                .get_with_query::<Value>("/api/links", &query)
-                .await
-            {
+            match client.get_with_query::<Value>("/api/links", &query).await {
                 Ok(data) => {
                     if json {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(links) = items {
                         let rows: Vec<Vec<String>> = links
                             .iter()

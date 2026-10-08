@@ -70,7 +70,10 @@ pub async fn run(cmd: AdminCmd) {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(users) = items {
                         let rows: Vec<Vec<String>> = users
                             .iter()
@@ -105,7 +108,10 @@ pub async fn run(cmd: AdminCmd) {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(sites) = items {
                         let rows: Vec<Vec<String>> = sites
                             .iter()
@@ -140,7 +146,10 @@ pub async fn run(cmd: AdminCmd) {
                         print_json(&data);
                         return;
                     }
-                    let items = data.get("data").and_then(|d| d.as_array()).or_else(|| data.as_array());
+                    let items = data
+                        .get("data")
+                        .and_then(|d| d.as_array())
+                        .or_else(|| data.as_array());
                     if let Some(teams) = items {
                         let rows: Vec<Vec<String>> = teams
                             .iter()
